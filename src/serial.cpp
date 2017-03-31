@@ -3,17 +3,11 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <boost/algorithm/hex.hpp>
 
 #include "serial.h"
+#include "misc.h"
 
 using namespace std;
-
-string b2h(vector<uint8_t> v) {
-	string res;
-	boost::algorithm::hex(v.begin(), v.end(), back_inserter(res));
-	return res;
-}
 
 bool operator ==(const struct termios &a, const struct termios &b)
 {
@@ -36,8 +30,8 @@ bool operator ==(const struct termios &a, const struct termios &b)
 	return true;
 }
 
-Serial::Serial(string port/* = "/dev/ttyACM0"*/, int baudrate/* = 115200*/, int stop/* = 1*/, int parity/* = 0*/, int timeout/* = 1*/)
-: fd(-1), withCrc(true)
+Serial::Serial(string port/* = "/dev/ttyACM0"*/, int baudrate/* = 115200*/, int stop/* = 1*/, int parity/* = 0*/, int timeout/* = 10*/)
+: fd(-1)
 {
 	fd = open(port.c_str(), O_RDWR);
 	if(fd < 0) {
@@ -54,7 +48,7 @@ Serial::~Serial()
 		close(fd);
 }
 
-bool Serial::setParameters(int baudrate/* = 115200*/, int stop/* = 1*/, int parity/* = 0*/, int timeout/* = 1*/)
+bool Serial::setParameters(int baudrate/* = 115200*/, int stop/* = 1*/, int parity/* = 0*/, int timeout/* = 10*/)
 {
 	struct termios ts;
 	struct termios tmp;
@@ -117,46 +111,54 @@ int Serial::write(const vector<uint8_t> &v)
 {
 	uint16_t crc;
 	vector<uint8_t> data;
-	int size = 0;
+	int size = 2; // + crc(2)
 
-	if(withCrc) {
-		crc = genCrc(v);
-	 	size = 2; // + crc(2)
-	}
-
+	crc = genCrc(v);
 	size += v.size();
 
 	data.push_back(size & 0xff);
 	data.push_back(size >> 8);
 	data.insert(data.end(), v.begin(), v.end());
 
-	if(withCrc) {
-		data.push_back(crc & 0xff);
-		data.push_back(crc >> 8);
-	}
+	data.push_back(crc & 0xff);
+	data.push_back(crc >> 8);
 
-	cout << "WRITE: " << b2h(data) << endl;
+	// cout << "WRITE(" << dec << data.size() << "): " << b2h(data) << endl;
 	size = ::write(fd, (const void*)data.data(), (size_t)data.size());
 
-	if((withCrc && (size >= 4)) || (!withCrc && (size >= 2)))
-		size -= withCrc ? 4 : 2; // - crc(2) - size(2)
+	if(size >= 4)
+		size -= 4; // - crc(2) - size(2)
 
 	return size;
 }
 
-vector<uint8_t> Serial::read(int i/* = 0*/)
+vector<uint8_t> Serial::read()
 {
 	vector<uint8_t> v;
-	int r = -1;
+	uint16_t size = 0;
+	uint16_t count;
+	uint16_t crc;
+	uint16_t crc2;
+	vector<uint8_t> tmp;
 
-	if(i == 0)
-		i = 0xFF;
+	tmp.resize(2);
+	::read(fd, tmp.data(), (size_t)tmp.size());
+	size = tmp[0] | tmp[1]<<8;
 
-	v.resize(i);
-	r = ::read(fd, v.data(), (size_t)v.size());
-	v.resize(r);
+	tmp.clear();
+	tmp.resize(size);
+	while(size != v.size()) {
+		count = ::read(fd, tmp.data(), (size_t)tmp.size());
+		v.insert(v.end(), tmp.begin(), tmp.begin() + count);
+	}
+	// cout << "READ(" << dec << v.size() << "): " << b2h(v) << endl;
+	crc = v[v.size() - 2] | v[v.size() - 1]<<8;
+	v.erase(v.end() - 2, v.end());
 
-	cout << "READ: " << b2h(v) << endl;
+	crc2 = genCrc(v);
+	if(crc != genCrc(v))
+		return vector<uint8_t>();
+
 	return v;
 }
 

@@ -1,29 +1,31 @@
 #include <string>
+#include <unistd.h>
 #include <iostream>
 #include <boost/algorithm/hex.hpp>
+#include "simpleproto.h"
+#include "misc.h"
 
-#include "serial.h"
+#define MAKEFIRMWARE
+#include "twn4.sys.h"
 
 using namespace std;
 
-vector<uint8_t> h2b(string s) {
-	vector<uint8_t> res;
-	boost::algorithm::unhex(s.begin(), s.end(), back_inserter(res));
-	return res;
-}
-
 int main(int argc, const char* argv[])
 {
-	Serial port("/dev/ttyACM0", 115200, 1, 0, 1);
-	string cmd = "0008";
-	vector<uint8_t> request { 0x00, 0x08 };
-	vector<uint8_t> response; // 0x00, 0x01, 0x80, 0x20, 0x04, 0x66, 0xCF, 0x4D, 0xC2
+	SimpleProtocolClient spc;
+	vector<uint8_t> v;
 
-	if(argc > 1)
-		cmd = argv[1];
+	spc.setTagTypes(TAGMASK(LFTAG_EM4102), TAGMASK(HFTAG_MIFARE));
 
-	request = h2b(cmd);
-	port.setCrc(true);
-	response = port.write_read(request);
+	for(int i = 0; i < 10; ) {
+		if(spc.searchTag(v)) {
+			cout << "TagID: " << b2h(v) << endl;
+			spc.greenLED(true);
+			spc.beep(100, 2000, 0x100, 0x100);
+			spc.greenLED(false);
+			i++;
+		}
+	}
+
 	return 0;
 }
