@@ -12,10 +12,12 @@ using namespace std;
 
 int main(int argc, const char* argv[])
 {
-	SimpleProtocolClient spc;
+	SimpleProtocolClient spc(argv[1]);
 	vector<uint8_t> v;
 
-	spc.setTagTypes(TAGMASK(LFTAG_EM4102), TAGMASK(HFTAG_MIFARE));
+	spc.beep(100, 2000, 0x100, 0x100);
+	spc.greenLED(false);
+	spc.setTagTypes(0, TAGMASK(HFTAG_MIFARE));
 
 	for(int i = 0; i < 10; ) {
 		if(spc.searchTag(v)) {

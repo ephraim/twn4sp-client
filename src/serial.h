@@ -1,22 +1,17 @@
-#include <termios.h>
-#include <unistd.h>
-#include <stdint.h>
-#include <vector>
 #include <string>
-
-using namespace std;
+#include <vector>
 
 class Serial {
 public:
-	Serial(string port = "/dev/ttyACM0", int baudrate = 115200, int stop = 1, int parity = 0, int timeout = 20);
-	virtual ~Serial();
+	virtual bool setParameters(int baudrate = 115200, int stop = 1, int parity = 0, int timeout = 20) = 0;
 
-	bool setParameters(int baudrate = 115200, int stop = 1, int parity = 0, int timeout = 20);
-	vector<uint8_t> write_read(vector<uint8_t> v);
-	int write(const vector<uint8_t> &v);
-	vector<uint8_t> read();
-	uint16_t genCrc(vector<uint8_t> v);
+	int write(const std::vector<uint8_t> &payload);
+	std::vector<uint8_t> read();
+	std::vector<uint8_t> write_read(const std::vector<uint8_t> &payload);
 
-private:
-	int fd;
+protected:
+	std::vector<uint8_t> generatePaketData(const std::vector<uint8_t> &payload);
+	uint16_t genCrc(std::vector<uint8_t> v);
+	virtual int _write(const std::vector<uint8_t> &data) = 0;
+	virtual std::vector<uint8_t> _read() = 0;
 };

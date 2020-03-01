@@ -1,11 +1,20 @@
 #include <string>
 #include <vector>
 
-#include "serial.h"
+#ifdef _WIN32
+#include "windows_serial.h"
+#else
+#include "unix_serial.h"
+#endif
 
 using namespace std;
 
-class SimpleProtocolClient : public Serial
+class SimpleProtocolClient
+#ifdef _WIN32
+: public WindowsSerial
+#else
+: public UnixSerial
+#endif
 {
 public:
 	SimpleProtocolClient(string port = "/dev/ttyACM0");

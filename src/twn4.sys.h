@@ -86,9 +86,6 @@ typedef unsigned char byte;
 #define BYTE2(x)       	((uint8_t)((x)>>16))
 #define BYTE3(x)       	((uint8_t)((x)>>24))
 
-#define LOBYTE(x)       BYTE0(x)
-#define HIBYTE(x)       BYTE1(x)
-
 #define USB_WORD(x)     BYTE0(x),BYTE1(x)
 #define USB_DWORD(x)    BYTE0(x),BYTE1(x),BYTE2(x),BYTE3(x)
 
@@ -391,7 +388,7 @@ typedef struct
 #define SLEEPMODE_STOP			0x0100
 
 #endif
-
+/*
 SYSFUNC(API_SYS, 0,bool SysCall(TEnvSysCall *Env))
 SYSFUNC(API_SYS, 1,void Reset(void))
 SYSFUNC(API_SYS, 2,void StartBootloader(void))
@@ -405,6 +402,7 @@ SYSFUNC(API_SYS, 9,bool SetParameters(const byte *TLV,int ByteCount))
 SYSFUNC(API_SYS,10,unsigned int GetLastError(void))
 SYSFUNC(API_SYS,11,int Diagnostic(int Mode,const void *In,int InLen,void *Out,int *OutLen,int MaxOutLen))
 SYSFUNC(API_SYS,12,bool ProgramApp(const byte *AppData,int AppDataLength))
+*/
 
 // ******************************************************************
 // ****** Standard I/O Functions ************************************

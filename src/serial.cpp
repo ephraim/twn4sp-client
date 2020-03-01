@@ -1,168 +1,85 @@
-#include <fcntl.h>
-#include <iomanip>
-#include <iostream>
-#include <sys/stat.h>
-#include <sys/types.h>
-
 #include "serial.h"
 #include "misc.h"
+#include <iostream>
 
-using namespace std;
-
-bool operator ==(const struct termios &a, const struct termios &b)
-{
-	if(a.c_iflag != b.c_iflag)
-		return false;
-
-	if(a.c_oflag != b.c_oflag)
-		return false;
-
-	if(a.c_cflag != b.c_cflag)
-		return false;
-
-	if(a.c_lflag != b.c_lflag)
-		return false;
-
-	for(int i = 0; i < NCCS; i++)
-		if(a.c_cc[i] != b.c_cc[i])
-			return false;
-
-	return true;
-}
-
-Serial::Serial(string port/* = "/dev/ttyACM0"*/, int baudrate/* = 115200*/, int stop/* = 1*/, int parity/* = 0*/, int timeout/* = 10*/)
-: fd(-1)
-{
-	fd = open(port.c_str(), O_RDWR);
-	if(fd < 0) {
-		cerr << "ERROR: could not open " << port << ". Error: " << hex << setw(8) << setfill('0') << errno << endl;
-		return;
-	}
-
-	setParameters(baudrate, stop, parity, timeout);
-}
-
-Serial::~Serial()
-{
-	if(fd >= 0)
-		close(fd);
-}
-
-bool Serial::setParameters(int baudrate/* = 115200*/, int stop/* = 1*/, int parity/* = 0*/, int timeout/* = 10*/)
-{
-	struct termios ts;
-	struct termios tmp;
-	speed_t speed;
-
-	if(fd < 0) {
-		cerr << "ERROR: filedescriptor invalid. Could not set parameters" << endl;
-		return false;
-	}
-
-	switch(baudrate) {
-		case 9600: speed = B9600; break;
-		default:
-			cerr << "WARNING: unknown baudrate specified: " << dec << baudrate << ". Using default: 115200" << endl;
-		case 115200: speed = B115200; break;
-	}
-
-	cfmakeraw(&ts);
-	cfsetspeed(&ts, speed);
-
-	if(stop == 2) // two stopbits
-		ts.c_cflag |= CSTOPB;
-	else  // one stopbits
-		ts.c_cflag &= ~CSTOPB;
-
-	if(parity == 1) { // with Even Parity
-		ts.c_cflag |= PARENB;
-		ts.c_cflag &= ~PARODD;
-	}
-	else if(parity == 2) { // with Odd Parity
-		ts.c_cflag |= PARENB;
-		ts.c_cflag |= PARODD;
-	}
-	else { // without any Parity
-		ts.c_cflag &= ~PARENB;
-		ts.c_cflag &= ~PARODD;
-	}
-
-	ts.c_cc[VMIN] = 0;
-	ts.c_cc[VTIME] = timeout * 10; // entity: 1/10 seconds
-
-	if(tcsetattr(fd, TCSAFLUSH, &ts) == 0) {
-		tcgetattr(fd, &tmp);
-		return ts == tmp;
-	}
-	return false;
-}
-
-vector<uint8_t> Serial::write_read(vector<uint8_t> v)
+std::vector<uint8_t> Serial::write_read(const std::vector<uint8_t> &payload)
 {
 	int i;
-	i = write(v);
-	if(i != v.size())
-		return vector<uint8_t>();
+	i = write(payload);
+	if(i != payload.size())
+		return std::vector<uint8_t>();
 
 	return read();
 }
 
-int Serial::write(const vector<uint8_t> &v)
+std::vector<uint8_t> Serial::generatePaketData(const std::vector<uint8_t> &payload)
 {
 	uint16_t crc;
-	vector<uint8_t> data;
-	int size = 2; // + crc(2)
+	std::vector<uint8_t> data;
+	int size = 0;
 
-	crc = genCrc(v);
-	size += v.size();
+	crc = genCrc(payload);
+	size = 2 + payload.size(); // + crc(2)
 
 	data.push_back(size & 0xff);
 	data.push_back(size >> 8);
-	data.insert(data.end(), v.begin(), v.end());
+	data.insert(data.end(), payload.begin(), payload.end());
 
 	data.push_back(crc & 0xff);
 	data.push_back(crc >> 8);
 
-	// cout << "WRITE(" << dec << data.size() << "): " << b2h(data) << endl;
-	size = ::write(fd, (const void*)data.data(), (size_t)data.size());
+	return data;
+}
 
-	if(size >= 4)
+int Serial::write(const std::vector<uint8_t> &payload)
+{
+	std::vector<uint8_t> data = generatePaketData(payload);
+	int size = 0;
+
+	std::cout << "WRITE(" << std::dec << data.size() << "): " << b2h(data) << std::endl;
+	size = _write(data);
+
+	if(size > 4)
 		size -= 4; // - crc(2) - size(2)
-
+	
 	return size;
 }
 
-vector<uint8_t> Serial::read()
+std::vector<uint8_t> Serial::read()
 {
-	vector<uint8_t> v;
-	uint16_t size = 0;
-	uint16_t count;
+	std::vector<uint8_t> data;
+	int size;
 	uint16_t crc;
-	uint16_t crc2;
-	vector<uint8_t> tmp;
+	uint16_t crc2 = 0;
 
-	tmp.resize(2);
-	::read(fd, tmp.data(), (size_t)tmp.size());
-	size = tmp[0] | tmp[1]<<8;
+	data = _read();
 
-	tmp.clear();
-	tmp.resize(size);
-	while(size != v.size()) {
-		count = ::read(fd, tmp.data(), (size_t)tmp.size());
-		v.insert(v.end(), tmp.begin(), tmp.begin() + count);
+	if(data.size() < 2)
+		return data;
+
+	size = data[0] | data[1]<<8;
+	if(size != (data.size() - 2)) {
+		std::cout << "READ(" << std::dec << data.size() << "): " << b2h(data) << std::endl;
+		std::cout << "retrieved data invalid in size." << std::endl;
+		return std::vector<uint8_t>();
 	}
-	// cout << "READ(" << dec << v.size() << "): " << b2h(v) << endl;
-	crc = v[v.size() - 2] | v[v.size() - 1]<<8;
-	v.erase(v.end() - 2, v.end());
+	data.erase(data.begin(), data.begin() + 2); // remove size
 
-	crc2 = genCrc(v);
-	if(crc != genCrc(v))
-		return vector<uint8_t>();
+	crc = data[data.size() - 2] | data[data.size() - 1]<<8;
+	data.erase(data.end() - 2, data.end()); // remove crc
 
-	return v;
+	if(data.size() > 0)
+		crc2 = genCrc(data);
+
+	if(crc != crc2) {
+		std::cout << "CRC Error READ(" << std::dec << data.size() << "): " << b2h(data) << std::endl; 
+		return std::vector<uint8_t>();
+	}
+
+	return data;
 }
 
-uint16_t Serial::genCrc(vector<uint8_t> v)
+uint16_t Serial::genCrc(std::vector<uint8_t> v)
 {
 	uint16_t ret = 0xFFFF;
 	uint16_t b;

@@ -7,7 +7,12 @@
 #include "twn4.sys.h"
 
 SimpleProtocolClient::SimpleProtocolClient(string port/* = "/dev/ttyACM0"*/)
-: Serial(port, 115200, 1, 0, 1)
+#ifdef _WIN32
+: WindowsSerial
+#else
+: UnixSerial
+#endif
+(port, 115200, 1, 0, 50)
 {
 	GPIOConfigureOutputs(REDLED | GREENLED, GPIO_PUPD_NOPULL, GPIO_OTYPE_PUSHPULL); // Led Green => GPIO1 => 0x02, Led Red => GPIO0 => 0x01
 }
@@ -101,10 +106,7 @@ bool SimpleProtocolClient::searchTag(vector<uint8_t>& tagID)
 	uint8_t bits;
 	uint8_t bytes;
 
-	setParameters(115200, 1, 0, 50);
 	response =  write_read({ 0x05, 0x00, 0x28 });
-	setParameters();
-
 	if(response.size() < 4)
 		return false;
 
@@ -115,6 +117,6 @@ bool SimpleProtocolClient::searchTag(vector<uint8_t>& tagID)
 	tagID.clear();
 	tagID.insert(tagID.begin(), response.begin() + 5, response.end());
 
-	// cout << "ret: " << (int)ret << ", tagType: 0x" << hex << (int)tagType << ", bits: " << dec << (int)bits << ", bytes: " << dec << (int)bytes << endl;
+	cout << "ret: " << (int)ret << ", tagType: 0x" << hex << (int)tagType << ", bits: " << dec << (int)bits << ", bytes: " << dec << (int)bytes << endl;
 	return ret;
 }
